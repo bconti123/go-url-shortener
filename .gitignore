@@ -1,0 +1,15 @@
+# Compiled binaries
+/bin/
+/server
+*.exe
+
+# Go build/test artifacts
+*.out
+
+# Local environment files (we'll add these in a later phase)
+.env
+
+# Editor/OS noise
+.DS_Store
+.idea/
+.vscode/
