@@ -1,0 +1,1 @@
+{"v":1,"f":{".gitignore":[{"s":"agent|claude(claude-opus-4-8)","l":["1-15"]}],"cmd/server/main.go":[{"s":"agent|claude(claude-opus-4-8)","l":["2-11","13-18","23-25","27-39","41-50"]},{"s":"operator","l":[1,12,"19-22",26,40]}],"go.mod":[{"s":"unknown","l":["1-3"]}]}}
