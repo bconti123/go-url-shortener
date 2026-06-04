@@ -43,6 +43,13 @@ func (s *store) save(url string) string {
 	return code
 }
 
+func (s *store) get(code string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	url, ok := s.urls[code]
+	return url, ok
+}
+
 func generateCode() string {
 	return strconv.FormatInt(time.Now().UnixNano(), 36)
 }
@@ -66,6 +73,20 @@ func shortenHandler(s *store) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(shortenResponse{Code: code})
+	}
+}
+
+func redirectHandler(s *store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		code := r.PathValue("code") // extract the {code} part from the URL
+		url, ok := s.get(code)
+
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+
+		http.Redirect(w, r, url, http.StatusFound)
 	}
 }
 
@@ -96,14 +117,21 @@ func main() {
 	// is better, and it keeps our routing isolated and testable.
 	mux := http.NewServeMux()
 
+	// endpoint list:
+
+	// GET /health → healthHandler
 	// Register the route. Since Go 1.22, the standard library router
 	// understands method + path patterns like "GET /health", so we get
 	// method-based routing without any third-party package.
 	mux.HandleFunc("GET /health", healthHandler)
 
+	// POST /shorten → shortenHandler
 	// Register the handler for POST /shorten.
 	s := newStore() // create a new store to hold our URL mappings
 	mux.HandleFunc("POST /shorten", shortenHandler(s))
+
+	// GET /{code} → redirectHandler
+	mux.HandleFunc("GET /{code}", redirectHandler(s))
 
 	addr := ":8080"
 	log.Printf("server listening on %s", addr)
