@@ -1,9 +1,73 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"sync"
+	"time"
 )
+
+// shortenRequest is the shape of the JSON we expect in the POST body.
+type shortenRequest struct {
+	URL string `json:"url"` // The `json:"url"` tag tells the JSON decoder to look for "url" in the input.
+}
+
+// shortenResponse is the shape of the JSON we send back in the response.
+type shortenResponse struct {
+	Code string `json:"code"` // The `json:"code"` tag tells the JSON encoder to use "code" as the key in the output.
+}
+
+// store holds the code→URL mapping. The mutex guards the map so that
+// concurrent requests (each in its own goroutine) can't corrupt it.
+type store struct {
+	mu   sync.Mutex
+	urls map[string]string
+}
+
+func newStore() *store {
+	return &store{
+		urls: make(map[string]string),
+	}
+}
+
+// save records a url under a freshly generated code and returns that code.
+func (s *store) save(url string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock() // runs when the function returns -- releases the lock
+	code := generateCode()
+
+	s.urls[code] = url
+
+	return code
+}
+
+func generateCode() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
+}
+
+func shortenHandler(s *store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		req := &shortenRequest{}
+		err := json.NewDecoder(r.Body).Decode(req)
+		if err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		if req.URL == "" {
+			http.Error(w, "url is required", http.StatusBadRequest)
+			return
+		}
+
+		code := s.save(req.URL)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(shortenResponse{Code: code})
+	}
+}
 
 // healthHandler responds to GET /health with a small JSON body.
 // In Go, an HTTP handler is just a function with this exact signature:
@@ -36,6 +100,10 @@ func main() {
 	// understands method + path patterns like "GET /health", so we get
 	// method-based routing without any third-party package.
 	mux.HandleFunc("GET /health", healthHandler)
+
+	// Register the handler for POST /shorten.
+	s := newStore() // create a new store to hold our URL mappings
+	mux.HandleFunc("POST /shorten", shortenHandler(s))
 
 	addr := ":8080"
 	log.Printf("server listening on %s", addr)
