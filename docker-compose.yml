@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: urlshort
+      POSTGRES_PASSWORD: urlshort
+      POSTGRES_DB: urlshort
+    # Host 5432-5434 are taken by local Postgres clusters, so publish on 5440.
+    ports:
+      - "5440:5432"
+    volumes:
+      # Runs only on FIRST init (when the data volume is empty), creating the table.
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      # Persists data across `docker compose down`/`up`.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U urlshort -d urlshort"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
