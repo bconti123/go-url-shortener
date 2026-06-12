@@ -1,18 +1,21 @@
 # go-url-shortener
 
-A small URL shortener written in Go, using only the standard library. It
-exposes an HTTP API to shorten a URL into a short code and to redirect from
-that code back to the original URL.
+A small URL shortener written in Go. It exposes an HTTP API to shorten a URL
+into a short code and to redirect from that code back to the original URL.
+Each short code also tracks how many times it has been visited.
 
 This is a learning project, built incrementally to explore Go's `net/http`
-server, the standard-library router, JSON handling, and concurrency-safe
-state. Each short code also tracks how many times it has been visited.
+server, the standard-library router, JSON handling, concurrency-safe state,
+interfaces, and `database/sql`.
 
 ## Requirements
 
 - Go 1.26 or newer
+- Docker (optional, only for the Postgres backend)
 
 ## Running
+
+By default the server uses an in-memory store and needs nothing else:
 
 ```bash
 go run ./cmd/server
@@ -30,6 +33,21 @@ To build a binary instead:
 go build -o server ./cmd/server
 ./server
 ```
+
+### With Postgres
+
+Set `DATABASE_URL` and the server uses Postgres instead of the in-memory
+store. A `docker-compose.yml` is included to run Postgres locally (published
+on host port `5440`, since `5432`–`5434` are often taken by local clusters):
+
+```bash
+docker compose up -d
+export DATABASE_URL='postgres://urlshort:urlshort@localhost:5440/urlshort?sslmode=disable'
+go run ./cmd/server
+```
+
+On startup the server logs which backend it chose (`using Postgres store` or
+`using in-memory store`).
 
 ## API
 
@@ -94,14 +112,22 @@ code isn't known.
 ## Project layout
 
 ```
-cmd/server/main.go   # server entrypoint, store, and HTTP handlers
-go.mod               # module definition
+cmd/server/main.go       # entrypoint, HTTP handlers, Store interface, in-memory store
+cmd/server/postgres.go   # Postgres connection and Store implementation
+cmd/server/*_test.go     # store unit tests and a gated Postgres integration test
+db/schema.sql            # urls table, run on first container init
+docker-compose.yml       # local Postgres
+go.mod                   # module definition
 ```
+
+Both stores satisfy a common `Store` interface, so the HTTP handlers are
+unaware of which backend is in use; `main` picks one based on `DATABASE_URL`.
 
 ## Notes and limitations
 
-- **Storage is in-memory.** All shortened URLs and their click counts are held
-  in a map and are lost when the server stops.
+- **The in-memory store is not persistent.** Without `DATABASE_URL`, all
+  shortened URLs and their click counts live in a map and are lost when the
+  server stops. The Postgres backend persists across restarts.
 - Short codes are derived from a nanosecond timestamp, so they are unique per
   run but not random or guessable-resistant.
 

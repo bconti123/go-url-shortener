@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -171,9 +172,24 @@ func main() {
 	// method-based routing without any third-party package.
 	mux.HandleFunc("GET /health", healthHandler)
 
+	// Choose the storage backend: Postgres when DATABASE_URL is set, otherwise
+	// the in-memory store. Both satisfy Store, so `s` is the INTERFACE type —
+	// the handlers below consume it without knowing which backend they got.
+	var s Store
+	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
+		db, err := openDB(dsn)
+		if err != nil {
+			log.Fatalf("connecting to database: %v", err)
+		}
+		defer db.Close() // fires on shutdown, since ListenAndServe blocks until then
+		s = newPostgresStore(db)
+		log.Printf("using Postgres store")
+	} else {
+		s = newStore()
+		log.Printf("using in-memory store")
+	}
+
 	// POST /shorten → shortenHandler
-	// Register the handler for POST /shorten.
-	s := newStore() // create a new store to hold our URL mappings
 	mux.HandleFunc("POST /shorten", shortenHandler(s))
 
 	// GET /{code} → redirectHandler
