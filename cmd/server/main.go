@@ -29,6 +29,16 @@ type entry struct {
 	Count int
 }
 
+type Store interface {
+	save(url string) string
+	get(code string) (string, bool)
+	stats(code string) (int, bool)
+}
+
+// Compile-time check that *store satisfies Store. If a method signature ever
+// drifts, the build fails here — at the type — instead of at a call site.
+var _ Store = (*store)(nil)
+
 // store holds the code→URL mapping. The mutex guards the map so that
 // concurrent requests (each in its own goroutine) can't corrupt it.
 type store struct {
@@ -81,7 +91,7 @@ func generateCode() string {
 	return strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
-func shortenHandler(s *store) http.HandlerFunc {
+func shortenHandler(s Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		req := &shortenRequest{}
@@ -103,7 +113,7 @@ func shortenHandler(s *store) http.HandlerFunc {
 	}
 }
 
-func redirectHandler(s *store) http.HandlerFunc {
+func redirectHandler(s Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("code") // extract the {code} part from the URL
 		url, ok := s.get(code)
