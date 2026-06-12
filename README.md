@@ -6,7 +6,7 @@ that code back to the original URL.
 
 This is a learning project, built incrementally to explore Go's `net/http`
 server, the standard-library router, JSON handling, and concurrency-safe
-state.
+state. Each short code also tracks how many times it has been visited.
 
 ## Requirements
 
@@ -74,6 +74,23 @@ Location: https://go.dev
 
 Returns `404 Not Found` if the code isn't known.
 
+Each redirect increments a per-code click counter (see `GET /{code}/stats`).
+
+### `GET /{code}/stats`
+
+Report how many times a code has been redirected.
+
+```bash
+curl localhost:8080/dizz6k68c63a/stats
+```
+
+```json
+{"count":3}
+```
+
+Reading stats does **not** count as a click. Returns `404 Not Found` if the
+code isn't known.
+
 ## Project layout
 
 ```
@@ -83,8 +100,8 @@ go.mod               # module definition
 
 ## Notes and limitations
 
-- **Storage is in-memory.** All shortened URLs are held in a map and are lost
-  when the server stops.
+- **Storage is in-memory.** All shortened URLs and their click counts are held
+  in a map and are lost when the server stops.
 - Short codes are derived from a nanosecond timestamp, so they are unique per
   run but not random or guessable-resistant.
 

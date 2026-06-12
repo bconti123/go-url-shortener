@@ -19,16 +19,26 @@ type shortenResponse struct {
 	Code string `json:"code"` // The `json:"code"` tag tells the JSON encoder to use "code" as the key in the output.
 }
 
+// statsResponse is the shape of the JSON we send back from GET /{code}/stats.
+type statsResponse struct {
+	Count int `json:"count"` // how many times this code has been redirected
+}
+
+type entry struct {
+	URL   string
+	Count int
+}
+
 // store holds the code→URL mapping. The mutex guards the map so that
 // concurrent requests (each in its own goroutine) can't corrupt it.
 type store struct {
 	mu   sync.Mutex
-	urls map[string]string
+	urls map[string]*entry // maps code to entry (URL + Count together)
 }
 
 func newStore() *store {
 	return &store{
-		urls: make(map[string]string),
+		urls: make(map[string]*entry),
 	}
 }
 
@@ -38,16 +48,33 @@ func (s *store) save(url string) string {
 	defer s.mu.Unlock() // runs when the function returns -- releases the lock
 	code := generateCode()
 
-	s.urls[code] = url
+	s.urls[code] = &entry{URL: url} // build a *entry; Count starts at 0
 
 	return code
 }
 
+// get returns the URL for a code and counts the lookup as one click.
 func (s *store) get(code string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	url, ok := s.urls[code]
-	return url, ok
+	e, ok := s.urls[code]
+	if !ok {
+		return "", false
+	}
+	e.Count++ // mutate through the pointer — this is why the map holds *entry
+	return e.URL, true
+}
+
+// stats returns the click count for a code WITHOUT incrementing it —
+// reading stats is not itself a click.
+func (s *store) stats(code string) (int, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.urls[code]
+	if !ok {
+		return 0, false
+	}
+	return e.Count, true
 }
 
 func generateCode() string {
@@ -132,6 +159,18 @@ func main() {
 
 	// GET /{code} → redirectHandler
 	mux.HandleFunc("GET /{code}", redirectHandler(s))
+
+	// GET /{code}/stats → statsHandler
+	mux.HandleFunc("GET /{code}/stats", func(w http.ResponseWriter, r *http.Request) {
+		code := r.PathValue("code")
+		count, ok := s.stats(code) // stats, not get — reading must not count as a click
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(statsResponse{Count: count})
+	})
 
 	addr := ":8080"
 	log.Printf("server listening on %s", addr)
