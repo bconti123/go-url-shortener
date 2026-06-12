@@ -7,9 +7,15 @@ import "testing"
 func TestSaveThenGet(t *testing.T) {
 	s := newStore()
 
-	code := s.save("https://go.dev")
+	code, err := s.save("https://go.dev")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
 
-	url, ok := s.get(code)
+	url, ok, err := s.get(code)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
 	if !ok {
 		t.Fatalf("get(%q) returned ok=false, want true", code)
 	}
@@ -22,17 +28,26 @@ func TestSaveThenGet(t *testing.T) {
 func TestGetIncrement(t *testing.T) {
 	s := newStore()
 
-	code := s.save("https://go.dev")
+	code, err := s.save("https://go.dev")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
 
 	// Call get three times to simulate three clicks.
 	for range 3 {
-		_, ok := s.get(code)
+		_, ok, err := s.get(code)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
 		if !ok {
 			t.Fatalf("get(%q) returned ok=false, want true", code)
 		}
 	}
 
-	count, ok := s.stats(code)
+	count, ok, err := s.stats(code)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
 	if !ok {
 		t.Fatalf("stats(%q) returned ok=false, want true", code)
 	}
@@ -45,11 +60,17 @@ func TestGetIncrement(t *testing.T) {
 func TestStatsDoesNotCount(t *testing.T) {
 	s := newStore()
 
-	code := s.save("https://go.dev")
+	code, err := s.save("https://go.dev")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
 
 	// Call stats three times to check the count without incrementing it.
 	for range 3 {
-		count, ok := s.stats(code)
+		count, ok, err := s.stats(code)
+		if err != nil {
+			t.Fatalf("stats: %v", err)
+		}
 		if !ok {
 			t.Fatalf("stats(%q) returned ok=false, want true", code)
 		}
@@ -59,12 +80,18 @@ func TestStatsDoesNotCount(t *testing.T) {
 	}
 
 	// Now call get once and verify that the count increments to 1.
-	_, ok := s.get(code)
+	_, ok, err := s.get(code)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
 	if !ok {
 		t.Fatalf("get(%q) returned ok=false, want true", code)
 	}
 
-	count, ok := s.stats(code)
+	count, ok, err := s.stats(code)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
 	if !ok {
 		t.Fatalf("stats(%q) returned ok=false, want true", code)
 	}
@@ -77,7 +104,10 @@ func TestStatsDoesNotCount(t *testing.T) {
 func TestGetUnknownCode(t *testing.T) {
 	s := newStore()
 
-	_, ok := s.get("unknown")
+	_, ok, err := s.get("unknown")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
 	if ok {
 		t.Errorf("get(%q) returned ok=true, want false", "unknown")
 	}

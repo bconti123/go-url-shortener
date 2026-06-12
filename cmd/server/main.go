@@ -30,9 +30,9 @@ type entry struct {
 }
 
 type Store interface {
-	save(url string) string
-	get(code string) (string, bool)
-	stats(code string) (int, bool)
+	save(url string) (string, error)
+	get(code string) (string, bool, error)
+	stats(code string) (int, bool, error)
 }
 
 // Compile-time check that *store satisfies Store. If a method signature ever
@@ -53,38 +53,40 @@ func newStore() *store {
 }
 
 // save records a url under a freshly generated code and returns that code.
-func (s *store) save(url string) string {
+// The in-memory store can't fail, so the error is always nil — but it must
+// satisfy the Store interface, which a database-backed store needs.
+func (s *store) save(url string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock() // runs when the function returns -- releases the lock
 	code := generateCode()
 
 	s.urls[code] = &entry{URL: url} // build a *entry; Count starts at 0
 
-	return code
+	return code, nil
 }
 
 // get returns the URL for a code and counts the lookup as one click.
-func (s *store) get(code string) (string, bool) {
+func (s *store) get(code string) (string, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.urls[code]
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 	e.Count++ // mutate through the pointer — this is why the map holds *entry
-	return e.URL, true
+	return e.URL, true, nil
 }
 
 // stats returns the click count for a code WITHOUT incrementing it —
 // reading stats is not itself a click.
-func (s *store) stats(code string) (int, bool) {
+func (s *store) stats(code string) (int, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.urls[code]
 	if !ok {
-		return 0, false
+		return 0, false, nil
 	}
-	return e.Count, true
+	return e.Count, true, nil
 }
 
 func generateCode() string {
@@ -106,7 +108,11 @@ func shortenHandler(s Store) http.HandlerFunc {
 			return
 		}
 
-		code := s.save(req.URL)
+		code, err := s.save(req.URL)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(shortenResponse{Code: code})
@@ -116,8 +122,11 @@ func shortenHandler(s Store) http.HandlerFunc {
 func redirectHandler(s Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("code") // extract the {code} part from the URL
-		url, ok := s.get(code)
-
+		url, ok, err := s.get(code)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -173,7 +182,11 @@ func main() {
 	// GET /{code}/stats → statsHandler
 	mux.HandleFunc("GET /{code}/stats", func(w http.ResponseWriter, r *http.Request) {
 		code := r.PathValue("code")
-		count, ok := s.stats(code) // stats, not get — reading must not count as a click
+		count, ok, err := s.stats(code) // stats, not get — reading must not count as a click
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		if !ok {
 			http.NotFound(w, r)
 			return
